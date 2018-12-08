@@ -3,8 +3,41 @@
 #include <vector>
 #include <algorithm>
 #include <array>
+#include <map>
+#include <unordered_set>
+#include <queue>
+#include <set>
 
 using namespace std;
+
+using Position = array<int, 2>;
+
+struct AstarPos
+{
+    AstarPos()
+        : pos({{0,0}})
+        , fScore(0)
+    {}
+
+    AstarPos(Position pos, int fscore)
+        : pos(pos)
+        , fScore(fscore)
+    {}
+    
+    Position pos;
+    int fScore;
+};
+
+bool operator<(const AstarPos& lhs, const AstarPos& rhs)
+{
+    return lhs.fScore > rhs.fScore;
+}
+
+int calcFScore(Position & start, Position & finish)
+{
+    return abs(start[0] - finish[0]) + abs(start[1] - finish[1]);
+}
+
 
 struct Tile
 {
@@ -24,32 +57,49 @@ struct Tile
 
 struct Player
 {
-    int row;
-    int column;
+    Position position;
     vector<string> quests;
     Tile tile;
     string tileItem;
 };
 
-struct ItemLocation
-{
-    ItemLocation(string name, int row, int column)
-        : name(name)
-        , row(row)
-        , column(column)
-    {}
-    
-    string name;
-    int row;
-    int column;
-};
-
 struct Board
 {
     array<array<Tile, 7>, 7> grid;
-    vector<ItemLocation> items;
+    map<string, Position> items;
     Player hero, villain;
+
+    vector<string> aStar(Player& player, array<int,2> & target)
+    {
+        vector<string> answer;
+
+        map<Position, Position> cameFrom;
+        set<Position> closedSet;
+        priority_queue<AstarPos> openSet;
+        openSet.emplace(player.position, calcFScore(player.position, target));
+
+        while (!openSet.empty())
+        {
+            const AstarPos & current = openSet.top;
+            if (current.pos == target)
+            {
+                // return best path
+                return answer;
+            }
+
+            openSet.pop();
+            closedSet.insert(current.pos);
+
+            // TODO: determine the neighbors of the position
+
+        }
+
+
+        return answer;
+    }
 };
+
+
 
 
 int main()
@@ -79,8 +129,7 @@ int main()
             cin >> numPlayerCards >> playerX >> playerY >> playerTile; cin.ignore();
 
             Player& player = i == 0 ? board.hero : board.villain;
-            player.column = playerX;
-            player.row = playerY;
+            player.position = { {playerY, playerX} };
             player.tile.readType(playerTile);
         }
 
@@ -104,7 +153,7 @@ int main()
             }
             else
             {
-                board.items.emplace_back(itemName, itemY, itemX);
+                board.items[itemName] = { {itemY, itemX} };
             }
 
             // Don't think I need to use itemPlayerID
@@ -137,7 +186,28 @@ int main()
         }
         else
         {
-            cout << "PASS" << endl;
+            // Start by identifying where I need to go
+            string& goal = board.hero.quests[0];
+            auto res = board.items.find(goal);
+
+            // If it isn't on the board, I can't get there, just pass for now
+            if (res != board.items.end())
+            {
+                auto path = board.aStar(board.hero, res->second);
+
+                string move = "MOVE";
+                for (auto & dir : path)
+                {
+                    move += " ";
+                    move += dir;
+                }
+
+                cout << move << endl;
+            }
+            else
+            {
+                cout << "PASS" << endl;
+            }
         }
     }
 }
