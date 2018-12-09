@@ -12,6 +12,7 @@ using namespace std;
 
 using Position = array<int, 2>;
 
+enum DIRECTION {UP, DOWN, LEFT, RIGHT};
 
 struct AstarPos
 {
@@ -250,6 +251,82 @@ struct Board
             }
         }
     }
+
+    void shiftColUp(int col)
+    {
+        Tile temp = hero.tile;
+        hero.tile = grid[0][col];
+        for (int i = 0; i < 6; i++)
+        {
+            grid[i][col] = grid[i + 1][col];
+        }
+
+        grid[6][col] = temp;
+
+        if (hero.position[1] == col)
+        {
+            hero.position[0]--;
+            if (hero.position[0] == -1)
+            {
+                hero.position[0] = 6;
+            }
+        }
+
+        for (auto& item : hero.items)
+        {
+            if (item.second[1] == col)
+            {
+                item.second[0]--;
+                if (item.second[0] == -1)
+                {
+                    item.second = { { -1, -1 } };
+                }
+            }
+
+            else if (item.second[1] == -1)
+            {
+                item.second = { { 6, col } };
+            }
+        }
+    }
+
+    void shiftColDown(int col)
+    {
+        Tile temp = hero.tile;
+        hero.tile = grid[6][col];
+        for (int i = 6; i > 0; i--)
+        {
+            grid[i][col] = grid[i - 1][col];
+        }
+
+        grid[0][col] = temp;
+
+        if (hero.position[1] == col)
+        {
+            hero.position[0]++;
+            if (hero.position[0] == 7)
+            {
+                hero.position[0] = 0;
+            }
+        }
+
+        for (auto& item : hero.items)
+        {
+            if (item.second[1] == col)
+            {
+                item.second[0]++;
+                if (item.second[0] == 7)
+                {
+                    item.second = { { -1, -1 } };
+                }
+            }
+
+            else if (item.second[1] == -1)
+            {
+                item.second = { { 0, col } };
+            }
+        }
+    }
 };
 
 
@@ -355,8 +432,8 @@ int main()
             else
             {
                 int minDist = 999;
-                int bestRow = 0;
-                bool left = true;
+                int bestIndex = 0;
+                DIRECTION direction = LEFT;
                 int distance;
 
                 // Try every row
@@ -368,8 +445,8 @@ int main()
                     if (distance < minDist)
                     {
                         minDist = distance;
-                        bestRow = i;
-                        left = true;
+                        bestIndex = i;
+                        direction = LEFT;
                     }
                     board.shiftRowRight(i);
 
@@ -379,14 +456,56 @@ int main()
                     if (distance < minDist)
                     {
                         minDist = distance;
-                        bestRow = i;
-                        left = false;
+                        bestIndex = i;
+                        direction = RIGHT;
                     }
                     board.shiftRowLeft(i);
+
+                    //Up 
+                    board.shiftColUp(i);
+                    distance = board.aStar(board.hero, res->second).second;
+                    if (distance < minDist)
+                    {
+                        minDist = distance;
+                        bestIndex = i;
+                        direction = UP;
+                    }
+                    board.shiftColDown(i);
+
+                    //Down 
+                    board.shiftColDown(i);
+                    distance = board.aStar(board.hero, res->second).second;
+                    if (distance < minDist)
+                    {
+                        minDist = distance;
+                        bestIndex = i;
+                        direction = DOWN;
+                    }
+                    board.shiftColUp(i);
                 }
 
-                string dir = left ? " LEFT" : " RIGHT";
-                cout << "PUSH " << bestRow << dir << endl;
+                string dir = "";
+                switch (direction)
+                {
+                case UP:
+                    dir = " UP";
+                    break;
+                case DOWN:
+                    dir = " DOWN";
+                    break;
+                case LEFT:
+                    dir = " LEFT";
+                    break;
+                case RIGHT:
+                    dir = " RIGHT";
+                    break;
+                default:
+                    break;
+                }
+
+
+
+                cout << "PUSH " << bestIndex << dir << endl;
             }
             
         }
