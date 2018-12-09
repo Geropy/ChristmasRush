@@ -81,12 +81,12 @@ struct Board
     array<array<Tile, 7>, 7> grid;
     Player hero, villain;
 
-    pair<vector<string>, int> aStar(Player& player, array<int,2> & target) const
+    pair<vector<string>, int> aStar(array<int, 2> & start, array<int,2> & target, int maxMoves = 20) const
     {
         map<Position, Position> cameFrom;
         set<Position> closedSet;
         priority_queue<AstarPos> openSet;
-        openSet.emplace(player.position, calcHScore(player.position, target), 0, vector<string>());
+        openSet.emplace(start, calcHScore(start, target), 0, vector<string>());
 
         AstarPos bestSoFar = openSet.top();
 
@@ -111,8 +111,13 @@ struct Board
             }
 
             // Determine the neighbors of the position
+            // No neightbors if move limit reached
+            if (current.cameFrom.size() >= maxMoves)
+            {
+                continue;
+            }
+       
             const Tile& currentTile = grid[currentPos[0]][currentPos[1]];
-            //cerr << "tile " << currentTile.upPath << currentTile.downPath << currentTile.leftPath << currentTile.rightPath << endl;
 
             if (currentTile.upPath && currentPos[0] != 0 && grid[currentPos[0] - 1][currentPos[1]].downPath)
             { 
@@ -417,7 +422,7 @@ int main()
 
         if (!moveTurn)
         {
-            // Try to get close to the goal
+            // Try to get make a move that enables a quest (assuming opponent doesn't mess it up)
 
             // Start by identifying where I need to go
             string& goal = board.hero.quests.front();
@@ -441,7 +446,7 @@ int main()
                 {
                     //Left 
                     board.shiftRowLeft(i);
-                    distance = board.aStar(board.hero, res->second).second;
+                    distance = board.aStar(board.hero.position, res->second).second;
                     if (distance < minDist)
                     {
                         minDist = distance;
@@ -452,7 +457,7 @@ int main()
 
                     //Right
                     board.shiftRowRight(i);
-                    distance = board.aStar(board.hero, res->second).second;
+                    distance = board.aStar(board.hero.position, res->second).second;
                     if (distance < minDist)
                     {
                         minDist = distance;
@@ -463,7 +468,7 @@ int main()
 
                     //Up 
                     board.shiftColUp(i);
-                    distance = board.aStar(board.hero, res->second).second;
+                    distance = board.aStar(board.hero.position, res->second).second;
                     if (distance < minDist)
                     {
                         minDist = distance;
@@ -474,7 +479,7 @@ int main()
 
                     //Down 
                     board.shiftColDown(i);
-                    distance = board.aStar(board.hero, res->second).second;
+                    distance = board.aStar(board.hero.position, res->second).second;
                     if (distance < minDist)
                     {
                         minDist = distance;
@@ -510,39 +515,101 @@ int main()
             
         }
         else
-        {
-            // Start by identifying where I need to go
-            string& goal = board.hero.quests.front();
-            //cerr << goal << endl;
-            auto res = board.hero.items.find(goal);
-
-            // If it isn't on the board, I can't get there, just pass for now
-            if (res->second[0] != -1)
+        {          
+            // Go through every quest item, see what I can get closest too
+            // In ties, use the shorter path
+            pair<vector<string>, int> bestPath(vector<string>(), 50);
+            string questPersued = "";
+            Position questPosition;
+            string move = "PASS";
+            for (auto& quest : board.hero.quests)
             {
-                //cerr << res->first << endl;
-                auto path = board.aStar(board.hero, res->second);
+                // Start by identifying where I need to go
+                auto res = board.hero.items.find(quest);
 
-                if (path.first.empty())
+                // If it isn't on the board, I can't get there, just pass for now
+                if (res->second[0] != -1)
                 {
-                    cout << "PASS" << endl;
+                    auto path = board.aStar(board.hero.position, res->second);
+
+                    if (path.first.empty())
+                    {
+                        continue;
+                    }
+                    else if (path.second < bestPath.second || (path.second == bestPath.second && path.first.size() < bestPath.first.size()))
+                    {
+                        bestPath = path;
+                        questPersued = quest;
+                        questPosition = res->second;
+                    }
                 }
                 else
                 {
-                    string move = "MOVE";
-                    for (auto & dir : path.first)
+                    continue;
+                }
+            }
+
+            if (!bestPath.first.empty())
+            {
+                move = "MOVE";
+                for (auto & dir : bestPath.first)
+                {
+                    move += " ";
+                    move += dir;
+                }
+            }
+
+            // At this point, I have single efficient path
+            // However, if this is a successful path, I have leftover useful moves
+            if (bestPath.second == 0)
+            {
+                int moves = 20 - bestPath.first.size();
+                bestPath = make_pair(vector<string>(), 50);
+
+                for (auto& quest : board.hero.quests)
+                {
+                    if (quest == questPersued)
+                    {
+                        continue;
+                    }
+                    
+                    // Start by identifying where I need to go
+                    auto res = board.hero.items.find(quest);
+
+                    // If it isn't on the board, I can't get there, just pass for now
+                    if (res->second[0] != -1)
+                    {
+                        auto path = board.aStar(questPosition, res->second, moves);
+
+                        if (path.first.empty())
+                        {
+                            continue;
+                        }
+                        else if (path.second < bestPath.second || (path.second == bestPath.second && path.first.size() < bestPath.first.size()))
+                        {
+                            bestPath = path;
+                            questPersued = quest;
+                            questPosition = res->second;
+                        }
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                }
+
+                if (!bestPath.first.empty())
+                {
+                    for (auto & dir : bestPath.first)
                     {
                         move += " ";
-
                         move += dir;
                     }
+                }
+            }
 
-                    cout << move << endl;
-                } 
-            }
-            else
-            {
-                cout << "PASS" << endl;
-            }
+            cout << move << endl;
+           
         }
     }
 }
