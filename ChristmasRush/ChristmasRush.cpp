@@ -67,7 +67,6 @@ struct Player
     vector<string> quests;
     map<string, Position> items;
     Tile tile;
-    string tileItem;
 
     void clear()
     {
@@ -81,12 +80,14 @@ struct Board
     array<array<Tile, 7>, 7> grid;
     Player hero, villain;
 
-    vector<string> aStar(Player& player, array<int,2> & target)
+    pair<vector<string>, int> aStar(Player& player, array<int,2> & target) const
     {
         map<Position, Position> cameFrom;
         set<Position> closedSet;
         priority_queue<AstarPos> openSet;
         openSet.emplace(player.position, calcHScore(player.position, target), 0, vector<string>());
+
+        AstarPos bestSoFar = openSet.top();
 
         //cerr << "path" << player.position[0] << player.position[1] << target[0] << target[1] << endl;
 
@@ -97,15 +98,19 @@ struct Board
             if (current.pos == target)
             {
                 // return best path by going through the cameFroms
-
-                return current.cameFrom;
+                return make_pair(current.cameFrom, 0);
             }
 
             openSet.pop();
             closedSet.insert(currentPos);
 
+            if (calcHScore(currentPos, target) < calcHScore(bestSoFar.pos, target))
+            {
+                bestSoFar = current;
+            }
+
             // Determine the neighbors of the position
-            Tile& currentTile = grid[currentPos[0]][currentPos[1]];
+            const Tile& currentTile = grid[currentPos[0]][currentPos[1]];
             //cerr << "tile " << currentTile.upPath << currentTile.downPath << currentTile.leftPath << currentTile.rightPath << endl;
 
             if (currentTile.upPath && currentPos[0] != 0 && grid[currentPos[0] - 1][currentPos[1]].downPath)
@@ -161,13 +166,89 @@ struct Board
             }
         }
 
-        return vector<string>();
+        return make_pair(bestSoFar.cameFrom, calcHScore(bestSoFar.pos, target));
     }
 
     void clear()
     {
         hero.clear();
         villain.clear();
+    }
+
+    void shiftRowLeft(int row)
+    {
+        Tile temp = hero.tile;
+        hero.tile = grid[row][0];
+        for (int i = 0; i < 6; i++)
+        {
+            grid[row][i] = grid[row][i + 1];
+        }
+
+        grid[row][6] = temp;
+
+        if (hero.position[0] == row)
+        {
+            hero.position[1]--;
+            if (hero.position[1] == -1)
+            {
+                hero.position[1] = 6;
+            }
+        }
+
+        for (auto& item : hero.items)
+        {
+            if (item.second[0] == row)
+            {
+                item.second[1]--;
+                if (item.second[1] == -1)
+                {
+                    item.second = { {-1, -1} };
+                }
+            }
+
+            else if (item.second[0] == -1)
+            {
+                item.second = { {row, 6} };
+            }
+        }
+    }
+
+    void shiftRowRight(int row)
+    {
+        Tile temp = hero.tile;
+        hero.tile = grid[row][6];
+        for (int i = 6; i > 0; i--)
+        {
+            grid[row][i] = grid[row][i - 1];
+        }
+
+        grid[row][0] = temp;
+
+        if (hero.position[0] == row)
+        {
+            hero.position[1]++;
+            if (hero.position[1] == 7)
+            {
+                hero.position[1] = 0;
+            }
+        }
+
+        for (auto& item : hero.items)
+        {
+            if (item.second[0] == row)
+            {
+                item.second[1]++;
+                if (item.second[1] == 7)
+                {
+                    item.second = { { -1, -1 } };
+                }
+            }
+
+            else if (item.second[0] == -1)
+            {
+                item.second = { { row, 0 } };
+            }
+        }
     }
 };
 
@@ -221,11 +302,11 @@ int main()
 
             if (itemX == -1)
             {
-                board.hero.tileItem = itemName;
+                board.hero.items[itemName] = { {-1, -1} };
             }
             else if (itemX == -2)
             {
-                board.villain.tileItem = itemName;
+                board.villain.items[itemName] = { { -1, -1 } };
             }
             else if (itemPlayerId == 0)
             {
@@ -256,14 +337,58 @@ int main()
             }
         }
 
-        // Write an action using cout. DON'T FORGET THE "<< endl"
-        // To debug: cerr << "Debug messages..." << endl;
-
-        cerr << moveTurn << endl;
 
         if (!moveTurn)
         {
-            cout << "PUSH 3 RIGHT" << endl; // PUSH <id> <direction> | MOVE <direction> | PASS
+            // Try to get close to the goal
+
+            // Start by identifying where I need to go
+            string& goal = board.hero.quests.front();
+            auto res = board.hero.items.find(goal);
+
+            // If it isn't on the board, I can't get there, just random move
+            if (res->second[0] == -1)
+            {
+                cout << "PUSH 3 UP" << endl; 
+            }
+
+            else
+            {
+                int minDist = 999;
+                int bestRow = 0;
+                bool left = true;
+                int distance;
+
+                // Try every row
+                for (int i = 0; i < 7; i++)
+                {
+                    //Left 
+                    board.shiftRowLeft(i);
+                    distance = board.aStar(board.hero, res->second).second;
+                    if (distance < minDist)
+                    {
+                        minDist = distance;
+                        bestRow = i;
+                        left = true;
+                    }
+                    board.shiftRowRight(i);
+
+                    //Right
+                    board.shiftRowRight(i);
+                    distance = board.aStar(board.hero, res->second).second;
+                    if (distance < minDist)
+                    {
+                        minDist = distance;
+                        bestRow = i;
+                        left = false;
+                    }
+                    board.shiftRowLeft(i);
+                }
+
+                string dir = left ? " LEFT" : " RIGHT";
+                cout << "PUSH " << bestRow << dir << endl;
+            }
+            
         }
         else
         {
@@ -273,19 +398,19 @@ int main()
             auto res = board.hero.items.find(goal);
 
             // If it isn't on the board, I can't get there, just pass for now
-            if (res != board.hero.items.end())
+            if (res->second[0] != -1)
             {
                 //cerr << res->first << endl;
                 auto path = board.aStar(board.hero, res->second);
 
-                if (path.empty())
+                if (path.first.empty())
                 {
                     cout << "PASS" << endl;
                 }
                 else
                 {
                     string move = "MOVE";
-                    for (auto & dir : path)
+                    for (auto & dir : path.first)
                     {
                         move += " ";
 
