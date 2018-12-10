@@ -7,17 +7,18 @@
 #include <unordered_set>
 #include <queue>
 #include <set>
+#include <ctime>
 
 using namespace std;
 
 using Position = array<int, 2>;
 
-enum DIRECTION {UP, DOWN, LEFT, RIGHT};
+enum DIRECTION { UP, DOWN, LEFT, RIGHT };
 
 struct AstarPos
 {
     AstarPos()
-        : pos({{0,0}})
+        : pos({ {0,0} })
         , fScore(0)
         , gScore(0)
     {}
@@ -28,7 +29,7 @@ struct AstarPos
         , gScore(gscore)
         , cameFrom(path)
     {}
-    
+
     Position pos;
     vector<string> cameFrom;
     int fScore;
@@ -81,7 +82,7 @@ struct Board
     array<array<Tile, 7>, 7> grid;
     Player hero, villain;
 
-    pair<vector<string>, int> aStar(array<int, 2> & start, array<int,2> & target, int maxMoves = 20) const
+    pair<vector<string>, int> aStar(array<int, 2> & start, array<int, 2> & target, int maxMoves = 20) const
     {
         map<Position, Position> cameFrom;
         set<Position> closedSet;
@@ -116,11 +117,11 @@ struct Board
             {
                 continue;
             }
-       
+
             const Tile& currentTile = grid[currentPos[0]][currentPos[1]];
 
             if (currentTile.upPath && currentPos[0] != 0 && grid[currentPos[0] - 1][currentPos[1]].downPath)
-            { 
+            {
                 Position newPos = { {currentPos[0] - 1, currentPos[1]} };
                 if (closedSet.find(newPos) == closedSet.end())
                 {
@@ -332,6 +333,22 @@ struct Board
             }
         }
     }
+
+    int itemCentralization()
+    {
+        int answer = 0;
+        for (auto & item : hero.quests)
+        {
+            auto res = hero.items.find(item);
+            if (res != hero.items.end())
+            {
+                auto& pos = res->second;
+                answer += abs(3 - pos[0]) * abs(3 - pos[0]) + abs(3 - pos[1]) * abs(3 - pos[1]);
+            }  
+        }
+
+        return answer;
+    }
 };
 
 
@@ -340,7 +357,7 @@ struct Board
 int main()
 {
     Board board;
-    
+
     // game loop
     while (1) {
         board.clear();
@@ -356,8 +373,6 @@ int main()
                 board.grid[i][j].readType(tile);
             }
         }
-
-        cerr << "check" << endl;
 
         // Read in player information
         for (int i = 0; i < 2; i++) {
@@ -419,103 +434,212 @@ int main()
             }
         }
 
-
+        //PUSH
         if (!moveTurn)
         {
+            clock_t start;
+            start = clock();
+            
             // Try to get make a move that enables a quest (assuming opponent doesn't mess it up)
+            int bestIndex = 0;
+            DIRECTION direction = LEFT;
+            int distance = -1;
+            bool found = false;
+            string push = "PUSH ";
+            int bestCentralization = 999;
+            int centralization;
 
-            // Start by identifying where I need to go
-            string& goal = board.hero.quests.front();
-            auto res = board.hero.items.find(goal);
-
-            // If it isn't on the board, I can't get there, just random move
-            if (res->second[0] == -1)
+            // Try every row
+            for (int i = 0; i < 7; i++)
             {
-                cout << "PUSH 3 UP" << endl; 
-            }
+                //Left 
+                board.shiftRowLeft(i);
 
-            else
-            {
-                int minDist = 999;
-                int bestIndex = 0;
-                DIRECTION direction = LEFT;
-                int distance;
-
-                // Try every row
-                for (int i = 0; i < 7; i++)
+                for (auto& quest : board.hero.quests)
                 {
-                    //Left 
-                    board.shiftRowLeft(i);
-                    distance = board.aStar(board.hero.position, res->second).second;
-                    if (distance < minDist)
+                    // Start by identifying where I need to go
+                    auto res = board.hero.items.find(quest);
+
+                    // If it isn't on the board, I can't get there, just skip
+                    if (res->second[0] == -1)
                     {
-                        minDist = distance;
+                        continue;
+                    }
+
+                    distance = board.aStar(board.hero.position, res->second).second;
+                    if (distance == 0)
+                    {
+                        bestIndex = i;
+                        direction = LEFT;
+                        found = true;
+                        break;
+                    }
+
+
+                }
+                if (!found)
+                {
+                    centralization = board.itemCentralization();
+                    if (centralization < bestCentralization)
+                    {
+                        bestCentralization = centralization;
                         bestIndex = i;
                         direction = LEFT;
                     }
-                    board.shiftRowRight(i);
+                }
+                
 
-                    //Right
-                    board.shiftRowRight(i);
-                    distance = board.aStar(board.hero.position, res->second).second;
-                    if (distance < minDist)
+                board.shiftRowRight(i);
+                if (found) { break; }
+
+                //Right
+                board.shiftRowRight(i);
+                for (auto& quest : board.hero.quests)
+                {
+                    // Start by identifying where I need to go
+                    auto res = board.hero.items.find(quest);
+
+                    // If it isn't on the board, I can't get there, just skip
+                    if (res->second[0] == -1)
                     {
-                        minDist = distance;
+                        continue;
+                    }
+
+                    distance = board.aStar(board.hero.position, res->second).second;
+                    if (distance == 0)
+                    {
+                        bestIndex = i;
+                        direction = RIGHT;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    centralization = board.itemCentralization();
+                    if (centralization < bestCentralization)
+                    {
+                        bestCentralization = centralization;
                         bestIndex = i;
                         direction = RIGHT;
                     }
-                    board.shiftRowLeft(i);
+                }
+                
+                board.shiftRowLeft(i);
+                if (found) { break; }
 
-                    //Up 
-                    board.shiftColUp(i);
-                    distance = board.aStar(board.hero.position, res->second).second;
-                    if (distance < minDist)
+                //Up 
+                board.shiftColUp(i);
+                for (auto& quest : board.hero.quests)
+                {
+                    // Start by identifying where I need to go
+                    auto res = board.hero.items.find(quest);
+
+                    // If it isn't on the board, I can't get there, just skip
+                    if (res->second[0] == -1)
                     {
-                        minDist = distance;
+                        continue;
+                    }
+
+                    distance = board.aStar(board.hero.position, res->second).second;
+                    if (distance == 0)
+                    {
+                        bestIndex = i;
+                        direction = UP;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    centralization = board.itemCentralization();
+                    if (centralization < bestCentralization)
+                    {
+                        bestCentralization = centralization;
                         bestIndex = i;
                         direction = UP;
                     }
-                    board.shiftColDown(i);
+                }
+                
+                board.shiftColDown(i);
+                if (found) { break; }
 
-                    //Down 
-                    board.shiftColDown(i);
-                    distance = board.aStar(board.hero.position, res->second).second;
-                    if (distance < minDist)
+                //Down 
+                board.shiftColDown(i);
+                for (auto& quest : board.hero.quests)
+                {
+                    // Start by identifying where I need to go
+                    auto res = board.hero.items.find(quest);
+
+                    // If it isn't on the board, I can't get there, just skip
+                    if (res->second[0] == -1)
                     {
-                        minDist = distance;
+                        continue;
+                    }
+
+                    distance = board.aStar(board.hero.position, res->second).second;
+                    if (distance == 0)
+                    {
+                        bestIndex = i;
+                        direction = DOWN;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    centralization = board.itemCentralization();
+                    if (centralization < bestCentralization)
+                    {
+                        bestCentralization = centralization;
                         bestIndex = i;
                         direction = DOWN;
                     }
-                    board.shiftColUp(i);
                 }
-
-                string dir = "";
-                switch (direction)
-                {
-                case UP:
-                    dir = " UP";
-                    break;
-                case DOWN:
-                    dir = " DOWN";
-                    break;
-                case LEFT:
-                    dir = " LEFT";
-                    break;
-                case RIGHT:
-                    dir = " RIGHT";
-                    break;
-                default:
-                    break;
-                }
-
-
-
-                cout << "PUSH " << bestIndex << dir << endl;
+                
+                board.shiftColUp(i);
+                if (found) { break; }
             }
-            
+
+            if (found)
+            {
+                cerr << "Getting one" << endl;
+            }
+            else
+            {
+                cerr << "centralizing" << endl;
+            }
+
+            // Make my best push
+            string dir = "";
+            switch (direction)
+            {
+            case UP:
+                dir = " UP";
+                break;
+            case DOWN:
+                dir = " DOWN";
+                break;
+            case LEFT:
+                dir = " LEFT";
+                break;
+            case RIGHT:
+                dir = " RIGHT";
+                break;
+            default:
+                break;
+            }
+
+            push += to_string(bestIndex);
+            push += dir;
+
+            cerr << 1000.0 * (clock() - start) / (double)CLOCKS_PER_SEC << endl;
+            cout << push << endl;
         }
+
+
         else
-        {          
+        {
             // Go through every quest item, see what I can get closest too
             // In ties, use the shorter path
             pair<vector<string>, int> bestPath(vector<string>(), 50);
@@ -572,7 +696,7 @@ int main()
                     {
                         continue;
                     }
-                    
+
                     // Start by identifying where I need to go
                     auto res = board.hero.items.find(quest);
 
@@ -609,7 +733,7 @@ int main()
             }
 
             cout << move << endl;
-           
+
         }
     }
 }
